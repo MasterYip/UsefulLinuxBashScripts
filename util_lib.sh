@@ -1,6 +1,6 @@
 # !/bin/bash
 
-PASSWORD="tzzm"
+PASSWORD="0"
 
 # Fetch script dir using dirname cmd
 # script_dir="$(dirname "$0")"
