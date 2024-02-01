@@ -2,14 +2,25 @@
 import subprocess
 import sys
 
-def set_custom_shortcut(name, command, shortcut):
+
+def set_custom_shortcut(name: str, command: str, shortcut: str):
+    """Set a custom shortcut using gsettings.
+
+    Args:
+        name (str): Shortcut name
+        command (str): Bash command to be executed
+        shortcut (str): Shortcut key combination (e.g. <Ctrl><Alt>z)
+
+    """
     # defining keys & strings to be used
     key = "org.gnome.settings-daemon.plugins.media-keys custom-keybindings"
     subkey1 = key.replace(" ", ".")[:-1]+":"
     item_s = "/"+key.replace(" ", "/").replace(".", "/")+"/"
     firstname = "custom"
     # get the current list of custom shortcuts
-    get = lambda cmd: subprocess.check_output(["/bin/bash", "-c", cmd]).decode("utf-8")
+
+    def get(cmd): return subprocess.check_output(
+        ["/bin/bash", "-c", cmd]).decode("utf-8")
     array_str = get("gsettings get "+key)
     # in case the array was empty, remove the annotation hints
     command_result = array_str.lstrip("@as")
@@ -32,6 +43,7 @@ def set_custom_shortcut(name, command, shortcut):
 
     for cmd in [cmd0, cmd1, cmd2, cmd3]:
         subprocess.call(["/bin/bash", "-c", cmd])
-        
+
+
 if __name__ == "__main__":
     set_custom_shortcut(*sys.argv[1:])
