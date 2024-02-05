@@ -4,9 +4,9 @@ Auto configuration modules & useful automation scripts for Linux.
 
 ## User Guide
 
-### config_lib
+### auto_config_lib
 
-`config_lib` is a library for auto configuration utilities, including:
+`auto_config_lib` is a library for auto configuration utilities, including:
 
 | Module            | Description                                 |
 | ----------------- | ------------------------------------------- |

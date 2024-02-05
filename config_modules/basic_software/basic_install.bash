@@ -1,5 +1,5 @@
 #!/bin/bash
-source $PRJ_ROOT/config_lib/utils/install_package.bash
+source $PRJ_ROOT/auto_config_lib/utils/install_package.bash
 
 # Debug
 install_package net-tools
