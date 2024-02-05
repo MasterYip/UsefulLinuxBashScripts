@@ -3,7 +3,7 @@ function install_package(){
     # $2: package installation command
     if ! command -v $1 > /dev/null; then
         echo "$1 is not installed. Installing..."
-        echo $PASSWORD | sudo -S apt install $1
+        echo $PASSWORD | sudo -S apt install -y $1
     else
         echo "$1 is already installed."
     fi
