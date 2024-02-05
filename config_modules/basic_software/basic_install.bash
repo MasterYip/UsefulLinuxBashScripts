@@ -1,14 +1,16 @@
 #!/bin/bash
 source $PRJ_ROOT/config_lib/utils/install_package.bash
 
-# Denig
+# Debug
 install_package net-tools
 install_package ssh
 install_package wget
 install_package curl
 install_package terminator
+install_package tree
+install_package mlocate
 
-# Edot
+# Edit
 install_package vim
 install_package gedit
 
