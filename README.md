@@ -2,7 +2,7 @@
 
 Auto configuration modules & useful automation scripts for Linux.
 
-## User Guide
+## Repo Guide
 
 ### auto_config_lib
 
@@ -26,3 +26,10 @@ User defined config modules that set up specific functions/features.
 | `network_setup`   | Set up network.                             |
 | `remote_ctrl`     | Set up remote control.                      |
 
+## Get Started
+
+1.Update your passward in `settings.bash`, and source it.
+
+2.Source corresponding bash script in `config_modules` to apply configs to Ubuntu.
+
+> Or, you can edit `setup.bash` to apply custommed configurations.
