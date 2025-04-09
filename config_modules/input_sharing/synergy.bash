@@ -6,3 +6,4 @@ echo $PASSWORD | sudo -S apt-get update
 echo $PASSWORD | sudo -S apt-get install -y libcanberra-gtk-module
 echo $PASSWORD | sudo -S dpkg -i /tmp/synergy.deb
 echo $PASSWORD | sudo -S apt-get -f install
+# FIXME: use -y for the last line?
