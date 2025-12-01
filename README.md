@@ -34,3 +34,11 @@ User defined config modules that set up specific functions/features.
 2. Source corresponding bash script in `config_modules` to apply configs to Ubuntu.
 
 > Or, you can edit `setup.bash` to apply customized configurations.
+
+## Trouble Shooting
+
+1. Ubuntu 24.04 'The SUID sandbox helper binary was found'
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+```
