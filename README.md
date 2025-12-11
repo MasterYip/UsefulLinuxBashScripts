@@ -48,3 +48,7 @@ echo 0 | sudo -S sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
 nvidia installer: `/etc/vulkan/icd.d/` 
 distribution’s driver package: `/usr/share/vulkan/icd.d` (disable this one)
+
+```bash
+sudo apt remove mesa-vulkan-drivers
+```
