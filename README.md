@@ -41,4 +41,10 @@ User defined config modules that set up specific functions/features.
 
 ```bash
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+echo 0 | sudo -S sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 ```
+
+2. Repeatitive GPU Reported
+
+nvidia installer: `/etc/vulkan/icd.d/` 
+distribution’s driver package: `/usr/share/vulkan/icd.d` (disable this one)
