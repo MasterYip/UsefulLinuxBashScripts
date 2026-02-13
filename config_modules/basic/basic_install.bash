@@ -9,6 +9,7 @@ install_package curl
 install_package terminator
 install_package tree
 install_package mlocate
+install_package proxychains
 
 # Edit
 install_package vim

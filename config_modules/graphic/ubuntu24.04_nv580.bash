@@ -1,0 +1,1 @@
+echo $PASSWORD | sudo apt install nvidia-driver-580-open 
