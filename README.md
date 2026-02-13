@@ -35,6 +35,14 @@ User defined config modules that set up specific functions/features.
 
 > Or, you can edit `setup.bash` to apply customized configurations.
 
+## Startup Applications
+
+1. Clash
+
+```bash
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 | echo 0 | sudo -S sysctl -w | kernel.apparmor_restrict_unprivileged_userns=0 | ~/Software/"Clash for Windows-0.20.23-x64-linux/cfw"
+```
+
 ## Trouble Shooting
 
 1. Ubuntu 24.04 'The SUID sandbox helper binary was found'
