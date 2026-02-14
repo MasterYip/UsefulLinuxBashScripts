@@ -43,16 +43,20 @@ User defined config modules that set up specific functions/features.
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 | echo 0 | sudo -S sysctl -w | kernel.apparmor_restrict_unprivileged_userns=0 | ~/Software/"Clash for Windows-0.20.23-x64-linux/cfw"
 ```
 
+## Notes
+
+- First Install NVIDIA Driver after Installing Ubuntu!
+
 ## Trouble Shooting
 
-1. Ubuntu 24.04 'The SUID sandbox helper binary was found'
+- Ubuntu 24.04 'The SUID sandbox helper binary was found'
 
 ```bash
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 echo 0 | sudo -S sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 ```
 
-2. Repeatitive GPU Reported
+- Repeatitive GPU Reported
 
 nvidia installer: `/etc/vulkan/icd.d/` 
 distribution’s driver package: `/usr/share/vulkan/icd.d` (disable this one)
