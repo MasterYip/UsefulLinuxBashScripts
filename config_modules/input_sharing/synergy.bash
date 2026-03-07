@@ -5,5 +5,5 @@ echo $PASSWORD | sudo -S add-apt-repository ppa:rock-core/qt4
 echo $PASSWORD | sudo -S apt-get update
 echo $PASSWORD | sudo -S apt-get install -y libcanberra-gtk-module
 echo $PASSWORD | sudo -S dpkg -i /tmp/synergy.deb
-echo $PASSWORD | sudo -S apt-get -f install
+echo $PASSWORD | sudo -S apt-get -f install -y
 # FIXME: use -y for the last line?
