@@ -10,6 +10,7 @@ install_package terminator
 install_package tree
 install_package mlocate
 install_package proxychains
+install_package htop
 
 # Edit
 install_package vim
