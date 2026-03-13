@@ -1,4 +1,5 @@
 
 sudo apt install flatpak
 # install deskflow
-flatpak install flathub io.deskflow.Deskflow
+flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install flathub org.deskflow.deskflow
