@@ -64,3 +64,22 @@ distribution’s driver package: `/usr/share/vulkan/icd.d` (disable this one)
 ```bash
 sudo apt remove mesa-vulkan-drivers
 ```
+
+- Wifi disappears after sleep (R9000P 2024)
+
+```bash
+sudo modprobe -r rtw89_8852ce rtw89_8852c rtw89_pci rtw89_core
+sudo modprobe rtw89_8852ce
+sudo systemctl restart NetworkManager
+```
+
+Permanent solution:
+
+```bash
+sudo tee /etc/modprobe.d/rtw89-pci.conf >/dev/null <<'EOF'
+options rtw89_pci disable_clkreq=y disable_aspm_l1=y disable_aspm_l1ss=y
+EOF
+
+sudo update-initramfs -u
+sudo reboot
+```
