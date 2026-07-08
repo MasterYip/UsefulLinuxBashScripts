@@ -91,10 +91,10 @@ def _check_wandb():
         print(f"Warning: could not verify wandb login ({exc})", file=sys.stderr)
 
 
-def _get_entity(api, args: argparse.Namespace) -> str:
-    """Return the entity from --entity flag or the logged-in default."""
-    if args.entity:
-        return args.entity
+def _resolve_entity(api, cli_entity: Optional[str]) -> str:
+    """Return the effective entity: CLI flag wins, else API default."""
+    if cli_entity:
+        return cli_entity
     # api.default_entity is the canonical way (wandb SDK ≥0.12)
     try:
         return api.default_entity
@@ -109,6 +109,8 @@ def _get_entity(api, args: argparse.Namespace) -> str:
         pass
     print("Error: could not determine wandb entity. Use --entity to specify it.", file=sys.stderr)
     sys.exit(1)
+
+
 
 
 def _human_bytes(n: int) -> str:
@@ -141,16 +143,14 @@ def _age_str(dt: datetime) -> str:
 
 def cmd_list(api, args: argparse.Namespace) -> None:
     """List artifacts in a project."""
-    entity = args.entity or _get_entity(api, args)
+    entity = args._entity
     project_name = args.project
     artifact_type = args.type
 
     print(f"=== Artifacts in {entity}/{project_name} ===")
 
     try:
-        artifact_types = api.artifact_types(
-            project_name, entity_name=entity,
-        )
+        artifact_types = api.artifact_types(args.project)
     except Exception as exc:
         print(f"Error listing artifact types: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -214,7 +214,7 @@ def cmd_list(api, args: argparse.Namespace) -> None:
 
 def cmd_delete(api, args: argparse.Namespace) -> None:
     """Delete specific artifact versions."""
-    entity = args.entity or _get_entity(api, args)
+    entity = args._entity
 
     if args.all:
         # Delete every version of the named artifact
@@ -238,7 +238,7 @@ def cmd_delete(api, args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        at = api.artifact_type(artifact_type_name, project=args.project, entity=entity)
+        at = api.artifact_type(artifact_type_name, project=args.project)
     except Exception as exc:
         print(f"Error: artifact type '{artifact_type_name}' not found: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -299,10 +299,10 @@ def cmd_delete(api, args: argparse.Namespace) -> None:
 
 def cmd_cleanup(api, args: argparse.Namespace) -> None:
     """Keep the latest N versions of each artifact, delete the rest."""
-    entity = args.entity or _get_entity(api, args)
+    entity = args._entity
 
     try:
-        artifact_types = api.artifact_types(args.project, entity_name=entity)
+        artifact_types = api.artifact_types(args.project)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -378,11 +378,11 @@ def cmd_cleanup(api, args: argparse.Namespace) -> None:
 
 def cmd_cleanup_age(api, args: argparse.Namespace) -> None:
     """Delete artifacts older than N days."""
-    entity = args.entity or _get_entity(api, args)
+    entity = args._entity
     cutoff = datetime.now(timezone.utc) - timedelta(days=args.older_than)
 
     try:
-        artifact_types = api.artifact_types(args.project, entity_name=entity)
+        artifact_types = api.artifact_types(args.project)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -438,7 +438,7 @@ def cmd_cleanup_age(api, args: argparse.Namespace) -> None:
 
 def cmd_nuke(api, args: argparse.Namespace) -> None:
     """Delete ALL artifacts in a project. Requires --force."""
-    entity = args.entity or _get_entity(api, args)
+    entity = args._entity
 
     if not args.force:
         print(
@@ -448,7 +448,7 @@ def cmd_nuke(api, args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        artifact_types = api.artifact_types(args.project, entity_name=entity)
+        artifact_types = api.artifact_types(args.project)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -489,10 +489,10 @@ def cmd_nuke(api, args: argparse.Namespace) -> None:
 
 def cmd_usage(api, args: argparse.Namespace) -> None:
     """Show storage usage summary for a project."""
-    entity = args.entity or _get_entity(api, args)
+    entity = args._entity
 
     try:
-        artifact_types = api.artifact_types(args.project, entity_name=entity)
+        artifact_types = api.artifact_types(args.project)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -685,6 +685,12 @@ def main() -> None:
     import wandb as _wb
 
     api = _wb.Api()
+    entity = _resolve_entity(api, args.entity)
+    args._entity = entity  # stash for display in subcommands
+
+    # Note: wandb API always uses the logged-in entity.  To query another
+    # entity's artifacts, set WANDB_ENTITY before running:
+    #   WANDB_ENTITY=<other-entity> ./manage_wandb_space.py usage -p <project>
 
     command_map = {
         "list": cmd_list,
