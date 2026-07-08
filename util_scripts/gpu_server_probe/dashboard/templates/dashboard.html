@@ -73,12 +73,12 @@
     margin-bottom: 8px; padding: 6px 8px;
     background: var(--bar-bg); border-radius: 4px;
   }
-  .gpu-row .gpu-header {
-    display: flex; justify-content: space-between; font-size: 0.8rem;
-    margin-bottom: 3px;
-  }
-  .gpu-row .gpu-name { font-weight: 500; }
-  .gpu-row .gpu-mem { color: var(--text-dim); }
+  .gpu-row .gpu-name { font-weight: 500; font-size: 0.8rem; margin-bottom: 4px; }
+  .gpu-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .gpu-bar .bar-wrap { flex: 1; height: 5px; }
+  .gpu-label { font-size: 0.65rem; color: var(--text-dim); width: 24px; flex-shrink: 0; }
+  .gpu-val  { font-size: 0.7rem; color: var(--text-dim); white-space: nowrap; min-width: 70px; text-align: right; }
+  .gpu-extras { font-size: 0.65rem; color: var(--text-dim); margin-top: 2px; }
 
   /* Bars */
   .bar-wrap { height: 6px; background: var(--bar-bg); border-radius: 3px; margin-bottom: 4px; }
@@ -189,19 +189,26 @@ function updateCard(name, m) {
     const gpus = m.gpu_info || [];
     gpuCountEl.textContent = gpus.length + ' GPU' + (gpus.length !== 1 ? 's' : '');
     gpusEl.innerHTML = gpus.map(g => {
-      const cls = barClass(g.utilization_gpu);
+      const gpuCls = barClass(g.utilization_gpu);
+      const memCls = barClass(g.utilization_memory);
       const memUsed = (g.memory_used_mb / 1024).toFixed(0);
       const memTotal = (g.memory_total_mb / 1024).toFixed(0);
       const tempStr = g.temperature_gpu != null ? g.temperature_gpu + '°C' : '';
       const powerStr = g.power_draw_w != null ? g.power_draw_w + 'W' : '';
       const extras = [tempStr, powerStr].filter(Boolean).join(' · ');
       return '<div class="gpu-row">' +
-        '<div class="gpu-header">' +
-          '<span class="gpu-name">GPU' + g.index + ': ' + g.name + ' <b>' + g.utilization_gpu + '%</b></span>' +
-          '<span class="gpu-mem">' + memUsed + '/' + memTotal + 'G</span>' +
+        '<div class="gpu-name">GPU' + g.index + ': ' + g.name + '</div>' +
+        '<div class="gpu-bar">' +
+          '<span class="gpu-label">GPU</span>' +
+          '<div class="bar-wrap"><div class="bar-fill ' + gpuCls + '" style="width:' + g.utilization_gpu + '%"></div></div>' +
+          '<span class="gpu-val">' + g.utilization_gpu + '%</span>' +
         '</div>' +
-        '<div class="bar-wrap"><div class="bar-fill ' + cls + '" style="width:' + g.utilization_gpu + '%"></div></div>' +
-        (extras ? '<div style="font-size:0.7rem;color:var(--text-dim)">' + extras + '</div>' : '') +
+        '<div class="gpu-bar">' +
+          '<span class="gpu-label">MEM</span>' +
+          '<div class="bar-wrap"><div class="bar-fill ' + memCls + '" style="width:' + g.utilization_memory + '%"></div></div>' +
+          '<span class="gpu-val">' + g.utilization_memory + '% ' + memUsed + '/' + memTotal + 'G</span>' +
+        '</div>' +
+        (extras ? '<div class="gpu-extras">' + extras + '</div>' : '') +
       '</div>';
     }).join('');
 

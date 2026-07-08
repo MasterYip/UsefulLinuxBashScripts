@@ -16,12 +16,9 @@ Usage:
   # Terminal TUI
   ./run_dashboard.py tui
 
-  # Custom probe interval and timeout
-  ./run_dashboard.py web --interval 5 --ssh-timeout 8
-  ./run_dashboard.py tui --interval 5 --ssh-timeout 8
-
-  # Custom config file
-  ./run_dashboard.py web --config my_servers.yaml
+  # Custom config, interval, and timeout
+  ./run_dashboard.py web --config servers_rp.yaml --interval 5 --ssh-timeout 8
+  ./run_dashboard.py tui --config servers_rp.yaml --interval 5 --ssh-timeout 8
 """
 
 from __future__ import annotations
@@ -31,12 +28,8 @@ import logging
 import sys
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="GPU Server Resource Dashboard",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
+def _add_common_args(parser: argparse.ArgumentParser) -> None:
+    """Add shared arguments to a (sub)parser."""
     parser.add_argument(
         "--config",
         default=None,
@@ -60,16 +53,28 @@ def main() -> None:
         help="Enable debug logging",
     )
 
-    sub = parser.add_subparsers(dest="mode", help="Dashboard mode")
-    sub_web = sub.add_parser("web", help="Start web dashboard (browser)")
-    sub_web.add_argument(
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="GPU Server Resource Dashboard",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    subs = parser.add_subparsers(dest="mode", help="Dashboard mode")
+
+    # -- web --
+    web_parser = subs.add_parser("web", help="Start web dashboard (browser)")
+    web_parser.add_argument(
         "--port", type=int, default=8080, help="HTTP port (default: 8080)"
     )
-    sub_web.add_argument(
+    web_parser.add_argument(
         "--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)"
     )
+    _add_common_args(web_parser)
 
-    sub_tui = sub.add_parser("tui", help="Start terminal dashboard")
+    # -- tui --
+    tui_parser = subs.add_parser("tui", help="Start terminal dashboard")
+    _add_common_args(tui_parser)
 
     args = parser.parse_args()
 
@@ -106,6 +111,9 @@ def main() -> None:
             interval=args.interval,
             ssh_timeout=args.ssh_timeout,
         )
+        # Print the actual browsable URL (0.0.0.0 isn't a valid browser address)
+        display_host = "127.0.0.1" if args.host in ("0.0.0.0", "::") else args.host
+        print(f"\n  Dashboard: http://{display_host}:{args.port}\n")
         uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
     elif args.mode == "tui":

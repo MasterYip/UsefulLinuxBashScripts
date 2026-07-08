@@ -52,8 +52,9 @@ async def probe_server(
     """
     ts = time.time()
     try:
-        async with asyncio.timeout(timeout):
-            metrics = await _collect(server, ts)
+        metrics = await asyncio.wait_for(
+            _collect(server, ts), timeout=timeout
+        )
     except asyncio.TimeoutError:
         return ServerMetrics(
             server_name=server.name,
