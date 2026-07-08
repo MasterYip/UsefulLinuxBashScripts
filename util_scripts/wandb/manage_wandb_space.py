@@ -169,7 +169,7 @@ def cmd_list(api, args: argparse.Namespace) -> None:
 
         try:
             for coll in at.collections():
-                for art in coll.versions():
+                for art in coll.artifacts():
                     type_count += 1
                     size = getattr(art, "size", 0) or 0
                     type_size += size
@@ -248,7 +248,7 @@ def cmd_delete(api, args: argparse.Namespace) -> None:
     for coll in at.collections():
         if coll.name != artifact_name:
             continue
-        for art in coll.versions():
+        for art in coll.artifacts():
             versions_to_delete.append(art)
 
     if not versions_to_delete:
@@ -317,7 +317,7 @@ def cmd_cleanup(api, args: argparse.Namespace) -> None:
         grouped = collections.defaultdict(list)
         try:
             for coll in at.collections():
-                for art in coll.versions():
+                for art in coll.artifacts():
                     grouped[coll.name].append(art)
         except Exception as exc:
             print(f"  Skipping type '{at.name}': {exc}", file=sys.stderr)
@@ -395,7 +395,7 @@ def cmd_cleanup_age(api, args: argparse.Namespace) -> None:
 
         try:
             for coll in at.collections():
-                for art in coll.versions():
+                for art in coll.artifacts():
                     created_str = getattr(art, "created_at", None)
                     if not created_str:
                         continue
@@ -457,7 +457,7 @@ def cmd_nuke(api, args: argparse.Namespace) -> None:
     for at in artifact_types:
         try:
             for c in at.collections():
-                for art in c.versions():
+                for art in c.artifacts():
                     all_versions.append(art)
         except Exception as exc:
             print(f"  Skipping type '{at.name}': {exc}", file=sys.stderr)
@@ -508,7 +508,7 @@ def cmd_usage(api, args: argparse.Namespace) -> None:
         try:
             for coll in at.collections():
                 collections_seen += 1
-                for art in coll.versions():
+                for art in coll.artifacts():
                     type_count += 1
                     type_size += getattr(art, "size", 0) or 0
         except Exception as exc:
