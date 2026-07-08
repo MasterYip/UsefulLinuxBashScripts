@@ -190,9 +190,10 @@ function updateCard(name, m) {
     gpuCountEl.textContent = gpus.length + ' GPU' + (gpus.length !== 1 ? 's' : '');
     gpusEl.innerHTML = gpus.map(g => {
       const gpuCls = barClass(g.utilization_gpu);
-      const memCls = barClass(g.utilization_memory);
       const memUsed = (g.memory_used_mb / 1024).toFixed(0);
       const memTotal = (g.memory_total_mb / 1024).toFixed(0);
+      const memPct = memTotal > 0 ? Math.round(g.memory_used_mb / g.memory_total_mb * 100) : 0;
+      const memCls = barClass(memPct);
       const tempStr = g.temperature_gpu != null ? g.temperature_gpu + '°C' : '';
       const powerStr = g.power_draw_w != null ? g.power_draw_w + 'W' : '';
       const extras = [tempStr, powerStr].filter(Boolean).join(' · ');
@@ -205,8 +206,8 @@ function updateCard(name, m) {
         '</div>' +
         '<div class="gpu-bar">' +
           '<span class="gpu-label">MEM</span>' +
-          '<div class="bar-wrap"><div class="bar-fill ' + memCls + '" style="width:' + g.utilization_memory + '%"></div></div>' +
-          '<span class="gpu-val">' + g.utilization_memory + '% ' + memUsed + '/' + memTotal + 'G</span>' +
+          '<div class="bar-wrap"><div class="bar-fill ' + memCls + '" style="width:' + memPct + '%"></div></div>' +
+          '<span class="gpu-val">' + memPct + '% ' + memUsed + '/' + memTotal + 'G</span>' +
         '</div>' +
         (extras ? '<div class="gpu-extras">' + extras + '</div>' : '') +
       '</div>';
