@@ -1,0 +1,17 @@
+# GPU Server Configuration
+# Derived from server.md — edit here to add/remove servers.
+
+defaults:
+  user: user
+  identity_file: ~/.ssh/id_rsa
+
+servers:
+  # ---- H20 Series ----
+  - name: H20-1
+    host: 127.0.0.1
+    port: 22222
+
+  - name: H20-2
+    host: 127.0.0.1
+    port: 22222
+

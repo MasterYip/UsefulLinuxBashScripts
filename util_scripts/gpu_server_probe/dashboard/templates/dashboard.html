@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPU Server Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card-bg: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --bar-bg: #21262d;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+  }
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+  }
+  .header h1 { font-size: 1.5rem; font-weight: 600; }
+  .header .info { color: var(--text-dim); font-size: 0.85rem; }
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px;
+  }
+  .status-dot.online { background: var(--green); }
+  .status-dot.stale  { background: var(--yellow); }
+  .status-dot.error  { background: var(--red); }
+
+  /* Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  /* Card */
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    transition: border-color 0.3s;
+  }
+  .card.error-card { border-color: var(--red); }
+  .card .card-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .card .card-header .name { font-weight: 600; font-size: 1.05rem; }
+  .card .card-header .time { color: var(--text-dim); font-size: 0.75rem; }
+
+  /* Error */
+  .card .error-msg {
+    color: var(--red); font-size: 0.85rem; text-align: center;
+    padding: 12px 0; display: none;
+  }
+  .card.error-card .error-msg { display: block; }
+  .card.error-card .metrics { display: none; }
+
+  /* GPU rows */
+  .gpu-row {
+    margin-bottom: 8px; padding: 6px 8px;
+    background: var(--bar-bg); border-radius: 4px;
+  }
+  .gpu-row .gpu-header {
+    display: flex; justify-content: space-between; font-size: 0.8rem;
+    margin-bottom: 3px;
+  }
+  .gpu-row .gpu-name { font-weight: 500; }
+  .gpu-row .gpu-mem { color: var(--text-dim); }
+
+  /* Bars */
+  .bar-wrap { height: 6px; background: var(--bar-bg); border-radius: 3px; margin-bottom: 4px; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+  .bar-fill.low  { background: var(--green); }
+  .bar-fill.mid  { background: var(--yellow); }
+  .bar-fill.high { background: var(--red); }
+
+  /* CPU / RAM */
+  .sys-row { margin-bottom: 6px; font-size: 0.82rem; }
+  .sys-row .sys-label { display: flex; justify-content: space-between; margin-bottom: 2px; }
+  .sys-row .sys-pct { font-weight: 500; }
+
+  /* GPU count badge */
+  .gpu-count { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 6px; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .grid { grid-template-columns: 1fr; }
+    body { padding: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>🖥️ GPU Server Dashboard</h1>
+    <div class="info">{{ server_count }} servers &middot; auto-refresh every {{ interval }}s</div>
+  </div>
+  <div class="info" id="last-update">Connecting...</div>
+</div>
+
+<div class="grid" id="grid">
+  {% for server in servers %}
+  <div class="card" id="card-{{ server.name }}">
+    <div class="card-header">
+      <span class="name">
+        <span class="status-dot" id="dot-{{ server.name }}"></span>
+        {{ server.name }}
+      </span>
+      <span class="time" id="time-{{ server.name }}">--</span>
+    </div>
+    <div class="error-msg" id="err-{{ server.name }}"></div>
+    <div class="metrics" id="metrics-{{ server.name }}">
+      <div class="gpu-count" id="gpu-count-{{ server.name }}"></div>
+      <div id="gpus-{{ server.name }}"></div>
+      <div class="sys-row">
+        <div class="sys-label"><span>CPU</span><span class="sys-pct" id="cpu-{{ server.name }}">--</span></div>
+        <div class="bar-wrap"><div class="bar-fill" id="cpu-bar-{{ server.name }}" style="width:0%"></div></div>
+      </div>
+      <div class="sys-row">
+        <div class="sys-label"><span>RAM</span><span class="sys-pct" id="ram-{{ server.name }}">--</span></div>
+        <div class="bar-wrap"><div class="bar-fill" id="ram-bar-{{ server.name }}" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+const INTERVAL = {{ interval }};
+
+function barClass(pct) {
+  if (pct < 60) return 'low';
+  if (pct < 85) return 'mid';
+  return 'high';
+}
+
+function timeAgo(ts) {
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (s < 10) return 'just now';
+  if (s < 60) return s + 's ago';
+  return Math.floor(s / 60) + 'm ago';
+}
+
+function updateCard(name, m) {
+  const card = document.getElementById('card-' + name);
+  const dot  = document.getElementById('dot-' + name);
+  const timeEl = document.getElementById('time-' + name);
+  const errEl  = document.getElementById('err-' + name);
+  const metricsEl = document.getElementById('metrics-' + name);
+
+  if (m.error) {
+    card.classList.add('error-card');
+    dot.className = 'status-dot error';
+    errEl.textContent = m.error;
+    timeEl.textContent = m.timestamp ? timeAgo(m.timestamp) : '--';
+  } else {
+    card.classList.remove('error-card');
+    timeEl.textContent = timeAgo(m.timestamp);
+
+    // Staleness: > 30s = stale, > 60s = show error
+    const age = Date.now() / 1000 - m.timestamp;
+    if (age > 60) {
+      dot.className = 'status-dot error';
+      card.classList.add('error-card');
+      errEl.textContent = 'Data too old (' + Math.floor(age) + 's)';
+      return;
+    } else if (age > 30) {
+      dot.className = 'status-dot stale';
+    } else {
+      dot.className = 'status-dot online';
+    }
+
+    // GPU
+    const gpuCountEl = document.getElementById('gpu-count-' + name);
+    const gpusEl = document.getElementById('gpus-' + name);
+    const gpus = m.gpu_info || [];
+    gpuCountEl.textContent = gpus.length + ' GPU' + (gpus.length !== 1 ? 's' : '');
+    gpusEl.innerHTML = gpus.map(g => {
+      const cls = barClass(g.utilization_gpu);
+      const memUsed = (g.memory_used_mb / 1024).toFixed(0);
+      const memTotal = (g.memory_total_mb / 1024).toFixed(0);
+      const tempStr = g.temperature_gpu != null ? g.temperature_gpu + '°C' : '';
+      const powerStr = g.power_draw_w != null ? g.power_draw_w + 'W' : '';
+      const extras = [tempStr, powerStr].filter(Boolean).join(' · ');
+      return '<div class="gpu-row">' +
+        '<div class="gpu-header">' +
+          '<span class="gpu-name">GPU' + g.index + ': ' + g.name + ' <b>' + g.utilization_gpu + '%</b></span>' +
+          '<span class="gpu-mem">' + memUsed + '/' + memTotal + 'G</span>' +
+        '</div>' +
+        '<div class="bar-wrap"><div class="bar-fill ' + cls + '" style="width:' + g.utilization_gpu + '%"></div></div>' +
+        (extras ? '<div style="font-size:0.7rem;color:var(--text-dim)">' + extras + '</div>' : '') +
+      '</div>';
+    }).join('');
+
+    // CPU
+    document.getElementById('cpu-' + name).textContent = m.cpu_percent + '%';
+    const cpuBar = document.getElementById('cpu-bar-' + name);
+    cpuBar.style.width = m.cpu_percent + '%';
+    cpuBar.className = 'bar-fill ' + barClass(m.cpu_percent);
+
+    // RAM
+    const ramText = m.ram_used_gb + '/' + m.ram_total_gb + 'G ' + m.ram_percent + '%';
+    document.getElementById('ram-' + name).textContent = ramText;
+    const ramBar = document.getElementById('ram-bar-' + name);
+    ramBar.style.width = m.ram_percent + '%';
+    ramBar.className = 'bar-fill ' + barClass(m.ram_percent);
+  }
+}
+
+// SSE connection
+const evtSource = new EventSource('/api/stream');
+evtSource.onmessage = (event) => {
+  try {
+    const data = JSON.parse(event.data);
+    for (const [name, metrics] of Object.entries(data)) {
+      updateCard(name, metrics);
+    }
+    document.getElementById('last-update').textContent =
+      'Last update: ' + new Date().toLocaleTimeString();
+  } catch(e) {
+    console.error('SSE parse error:', e);
+  }
+};
+evtSource.onerror = () => {
+  document.getElementById('last-update').textContent = 'Connection lost — retrying...';
+};
+</script>
+</body>
+</html>
