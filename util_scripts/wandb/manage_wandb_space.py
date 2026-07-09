@@ -59,6 +59,7 @@ Usage:
 
 import argparse
 import collections
+import fnmatch
 import os
 import shutil
 import sys
@@ -135,6 +136,38 @@ def _age_str(dt: datetime) -> str:
     if days < 365:
         return f"{days // 30}mo ago"
     return f"{days // 365}y ago"
+
+
+def _parse_size(s: str) -> int:
+    """Parse a human-readable size string like '10MB', '1.5GB' into bytes."""
+    s = s.strip().upper()
+    multipliers = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
+    for suffix, mult in sorted(multipliers.items(), key=lambda x: len(x[0]), reverse=True):
+        if s.endswith(suffix):
+            try:
+                return int(float(s[: -len(suffix)]) * mult)
+            except ValueError:
+                pass
+    # No suffix — try as raw bytes
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    print(f"Warning: could not parse size '{s}', treating as 0", file=sys.stderr)
+    return 0
+
+
+def _run_created(run) -> Optional[datetime]:
+    """Extract created_at from a run as a timezone-aware datetime, or None."""
+    created = getattr(run, "created_at", None)
+    if created is None:
+        return None
+    if isinstance(created, datetime):
+        return created
+    try:
+        return datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +469,197 @@ def cmd_cleanup_age(api, args: argparse.Namespace) -> None:
     print("Done.")
 
 
+def cmd_run_files(api, args: argparse.Namespace) -> None:
+    """List files stored inside runs — checkpoints, logs, code, etc."""
+    entity = args._entity
+    path = f"{entity}/{args.project}"
+
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(days=args.older_than)
+        if args.older_than
+        else None
+    )
+
+    print(f"=== Run files in {path} ===", flush=True)
+    if args.pattern:
+        print(f"  Pattern: {args.pattern}")
+    if cutoff:
+        print(f"  Older than: {args.older_than} days")
+
+    total_size = 0
+    total_files = 0
+    runs_scanned = 0
+    runs_with_matches = 0
+    per_pattern: dict[str, tuple[int, int]] = collections.defaultdict(
+        lambda: (0, 0)
+    )  # ext → (count, total_size)
+
+    for run in api.runs(path):
+        runs_scanned += 1
+
+        if cutoff:
+            created = _run_created(run)
+            if created and created >= cutoff:
+                continue
+
+        matched = []
+        try:
+            for f in run.files():
+                sz = f.size or 0
+                if args.pattern and not fnmatch.fnmatch(f.name, args.pattern):
+                    continue
+                if args.min_size and sz < args.min_size:
+                    continue
+                matched.append(f)
+                total_size += sz
+                total_files += 1
+                # Track by extension
+                ext = os.path.splitext(f.name)[1].lower() or "(noext)"
+                cnt, sz_sum = per_pattern[ext]
+                per_pattern[ext] = (cnt + 1, sz_sum + sz)
+        except Exception as exc:
+            if runs_scanned <= 3:
+                print(f"  (skipping run {run.name}: {exc})", file=sys.stderr)
+            continue
+
+        if matched:
+            runs_with_matches += 1
+            age = (_age_str(rc) if (rc := _run_created(run)) else "?")
+            match_size = sum(f.size or 0 for f in matched)
+            print(
+                f"\n  [{runs_scanned}] {run.name}  "
+                f"({getattr(run, 'state', '?')}, {age})  "
+                f"{len(matched)} file(s) → {_human_bytes(match_size)}"
+            )
+            for f in matched[:5]:
+                print(f"    {f.name}  {_human_bytes(f.size or 0)}")
+            if len(matched) > 5:
+                more = len(matched) - 5
+                more_sz = sum(f.size or 0 for f in matched[5:])
+                print(f"    ... and {more} more ({_human_bytes(more_sz)})")
+
+        if args.limit and runs_scanned >= args.limit:
+            print(f"\n  (stopped after --limit {args.limit} runs)")
+            break
+
+        if runs_scanned % 50 == 0:
+            print(
+                f"  [{runs_scanned} runs scanned, {total_files} files matched, "
+                f"{_human_bytes(total_size)} so far]",
+                flush=True,
+            )
+
+    print(f"\n{'─' * 60}")
+    print(
+        f"Runs scanned: {runs_scanned}  |  "
+        f"Runs with matches: {runs_with_matches}  |  "
+        f"Files matched: {total_files}  |  "
+        f"Total: {_human_bytes(total_size)}"
+    )
+
+    if per_pattern:
+        print("\nBy file type:")
+        for ext, (cnt, sz) in sorted(
+            per_pattern.items(), key=lambda x: x[1][1], reverse=True
+        ):
+            print(f"  {ext:<12} {cnt:>6} files  {_human_bytes(sz):>12}")
+
+
+def cmd_clean_run_files(api, args: argparse.Namespace) -> None:
+    """Delete run files matching a pattern (e.g. *.ckpt)."""
+    entity = args._entity
+    path = f"{entity}/{args.project}"
+
+    if not args.pattern:
+        print(
+            "Error: --pattern is required (e.g. '*.ckpt', '*.pt')",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(days=args.older_than)
+        if args.older_than
+        else None
+    )
+
+    print(f"=== Clean run files in {path} ===")
+    print(f"  Pattern: {args.pattern}")
+    if cutoff:
+        print(f"  Older than: {args.older_than} days")
+    print("  Scanning runs ...", flush=True)
+
+    to_delete: list[tuple] = []  # (run_name, file_obj)
+    runs_scanned = 0
+
+    for run in api.runs(path):
+        runs_scanned += 1
+
+        if cutoff:
+            created = _run_created(run)
+            if created is None or created >= cutoff:
+                continue
+
+        try:
+            for f in run.files():
+                if fnmatch.fnmatch(f.name, args.pattern):
+                    to_delete.append((run, f))
+        except Exception:
+            continue
+
+        if runs_scanned % 50 == 0:
+            print(
+                f"  [{runs_scanned} runs scanned, {len(to_delete)} files queued]",
+                flush=True,
+            )
+
+    if not to_delete:
+        print(f"\nNo files matching '{args.pattern}' found.")
+        if cutoff:
+            print("(Try without --older-than to see all matching files.)")
+        return
+
+    total_size = sum(f.size or 0 for _, f in to_delete)
+    runs_affected = len({r.id for r, _ in to_delete})
+
+    print(f"\nFound {len(to_delete)} file(s) across {runs_affected} run(s)")
+    print(f"Total: ~{_human_bytes(total_size)}\n")
+
+    # Show preview
+    for run, f in to_delete[:25]:
+        name = getattr(run, "name", "?")
+        age = (_age_str(rc) if (rc := _run_created(run)) else "?")
+        print(
+            f"  {name}/{f.name}  {_human_bytes(f.size or 0)}  ({age})"
+        )
+    if len(to_delete) > 25:
+        print(f"  ... and {len(to_delete) - 25} more")
+
+    if args.dry_run:
+        print("\n[Dry-run] No changes made.")
+        return
+
+    confirm = input(f"\nType 'yes' to permanently delete these {len(to_delete)} files: ")
+    if confirm != "yes":
+        print("Aborted.")
+        return
+
+    deleted = 0
+    failed = 0
+    for run, f in to_delete:
+        name = getattr(run, "name", "?")
+        print(f"  Deleting {name}/{f.name} ...", end=" ", flush=True)
+        try:
+            f.delete()
+            print("done")
+            deleted += 1
+        except Exception as exc:
+            print(f"failed: {exc}")
+            failed += 1
+
+    print(f"\nDone.  Deleted: {deleted}, Failed: {failed}")
+
+
 def cmd_nuke(api, args: argparse.Namespace) -> None:
     """Delete ALL artifacts in a project. Requires --force."""
     entity = args._entity
@@ -488,26 +712,28 @@ def cmd_nuke(api, args: argparse.Namespace) -> None:
 
 
 def cmd_usage(api, args: argparse.Namespace) -> None:
-    """Show storage usage summary for a project."""
+    """Show storage usage summary for a project — artifacts + run files."""
     entity = args._entity
+    path = f"{entity}/{args.project}"
 
+    # ------------------------------------------------------------------
+    # 1. Artifact storage (wandb-history, wandb-events, datasets, models...)
+    # ------------------------------------------------------------------
     try:
         artifact_types = api.artifact_types(args.project)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    grand_total_size = 0
-    grand_total_count = 0
+    artifact_total_size = 0
+    artifact_total_count = 0
     per_type: list[tuple[str, int, int]] = []  # (type_name, count, total_bytes)
 
     for at in artifact_types:
         type_count = 0
         type_size = 0
-        collections_seen = 0
         try:
             for coll in at.collections():
-                collections_seen += 1
                 for art in coll.artifacts():
                     type_count += 1
                     type_size += getattr(art, "size", 0) or 0
@@ -517,16 +743,82 @@ def cmd_usage(api, args: argparse.Namespace) -> None:
 
         if type_count:
             per_type.append((at.name, type_count, type_size))
-            grand_total_count += type_count
-            grand_total_size += type_size
+            artifact_total_count += type_count
+            artifact_total_size += type_size
 
+    # ------------------------------------------------------------------
+    # 2. Run-file storage (checkpoints, logs, saved files, code snapshots...)
+    # ------------------------------------------------------------------
+    run_files_size = 0
+    run_files_count = 0
+    runs_scanned = 0
+    runs_skipped = 0
+    per_run_ext: dict[str, tuple[int, int]] = collections.defaultdict(
+        lambda: (0, 0)
+    )  # ext → (count, total_bytes)
+
+    if not args.artifacts_only:
+        print(f"Scanning runs in {path} ...", end=" ", flush=True)
+        for run in api.runs(path):
+            runs_scanned += 1
+            try:
+                for f in run.files():
+                    sz = f.size or 0
+                    run_files_size += sz
+                    run_files_count += 1
+                    ext = os.path.splitext(f.name)[1].lower() or "(noext)"
+                    cnt, sz_sum = per_run_ext[ext]
+                    per_run_ext[ext] = (cnt + 1, sz_sum + sz)
+            except Exception:
+                runs_skipped += 1
+                continue
+
+            if runs_scanned % 50 == 0:
+                print(
+                    f"\n  [{runs_scanned} runs scanned, "
+                    f"{run_files_count} files, "
+                    f"{_human_bytes(run_files_size)} so far]",
+                    end=" ",
+                    flush=True,
+                )
+
+        print(f"done ({runs_scanned} runs", end="")
+        if runs_skipped:
+            print(f", {runs_skipped} skipped)", end="")
+        print(")")
+
+    # ------------------------------------------------------------------
+    # 3. Print combined report
+    # ------------------------------------------------------------------
     print(f"\n=== Storage Usage for {entity}/{args.project} ===\n")
-    print(f"{'Type':<30} {'Versions':>10} {'Size':>12}")
+
+    # -- Artifact section --
+    print(f"{'Artifact Type':<30} {'Versions':>10} {'Size':>12}")
     print("-" * 54)
     for type_name, count, size in sorted(per_type, key=lambda x: x[2], reverse=True):
         print(f"{type_name:<30} {count:>10} {_human_bytes(size):>12}")
     print("-" * 54)
-    print(f"{'TOTAL':<30} {grand_total_count:>10} {_human_bytes(grand_total_size):>12}")
+    print(f"{'Artifacts subtotal':<30} {artifact_total_count:>10} {_human_bytes(artifact_total_size):>12}")
+    print()
+
+    # -- Run files section --
+    if not args.artifacts_only and per_run_ext:
+        print(f"{'Run File Type':<30} {'Files':>10} {'Size':>12}")
+        print("-" * 54)
+        for ext, (cnt, sz) in sorted(
+            per_run_ext.items(), key=lambda x: x[1][1], reverse=True
+        ):
+            print(f"{ext:<30} {cnt:>10} {_human_bytes(sz):>12}")
+        print("-" * 54)
+        print(f"{'Run files subtotal':<30} {run_files_count:>10} {_human_bytes(run_files_size):>12}")
+        print()
+    elif not args.artifacts_only:
+        print("(No run files found)\n")
+
+    # -- Grand total --
+    total_all_count = artifact_total_count + run_files_count
+    total_all_size = artifact_total_size + run_files_size
+    print(f"{'TOTAL (combined)':<30} {total_all_count:>10} {_human_bytes(total_all_size):>12}")
     print()
 
     # Show which entity we're operating as
@@ -660,9 +952,25 @@ def main() -> None:
     p_nuke.add_argument("--project", "-p", required=True, help="Project name")
     p_nuke.add_argument("--force", action="store_true", help="Required to proceed")
 
+    # ---- run-files ----
+    p_rf = sub.add_parser("run-files", help="List files stored inside runs (checkpoints, logs, etc.)")
+    p_rf.add_argument("--project", "-p", required=True, help="Project name")
+    p_rf.add_argument("--pattern", help="Filename glob, e.g. '*.ckpt' or '*.pt'")
+    p_rf.add_argument("--min-size", help="Minimum file size, e.g. '10MB'")
+    p_rf.add_argument("--older-than", "-d", type=int, help="Only show runs older than N days")
+    p_rf.add_argument("--limit", type=int, help="Max runs to scan (for testing)")
+
+    # ---- clean-run-files ----
+    p_crf = sub.add_parser("clean-run-files", help="Delete run files matching a pattern")
+    p_crf.add_argument("--project", "-p", required=True, help="Project name")
+    p_crf.add_argument("--pattern", required=True, help="Filename glob, e.g. '*.ckpt' or '*.pt'")
+    p_crf.add_argument("--older-than", "-d", type=int, required=True, help="Only delete files from runs older than N days")
+    p_crf.add_argument("--dry-run", action="store_true", help="Preview only, don't delete")
+
     # ---- usage ----
     p_usage = sub.add_parser("usage", help="Show storage usage summary for a project")
     p_usage.add_argument("--project", "-p", required=True, help="Project name")
+    p_usage.add_argument("--artifacts-only", action="store_true", help="Skip scanning run files (faster, but misses checkpoints & saved files)")
 
     # ---- clean-local ----
     p_local = sub.add_parser("clean-local", help="Clean local wandb cache and logs")
@@ -688,6 +996,10 @@ def main() -> None:
     entity = _resolve_entity(api, args.entity)
     args._entity = entity  # stash for display in subcommands
 
+    # Parse human-readable --min-size if provided (run-files only)
+    if getattr(args, "min_size", None):
+        args.min_size = _parse_size(args.min_size)
+
     # Note: wandb API always uses the logged-in entity.  To query another
     # entity's artifacts, set WANDB_ENTITY before running:
     #   WANDB_ENTITY=<other-entity> ./manage_wandb_space.py usage -p <project>
@@ -697,6 +1009,8 @@ def main() -> None:
         "delete": cmd_delete,
         "cleanup": cmd_cleanup,
         "cleanup-age": cmd_cleanup_age,
+        "run-files": cmd_run_files,
+        "clean-run-files": cmd_clean_run_files,
         "nuke": cmd_nuke,
         "usage": cmd_usage,
     }

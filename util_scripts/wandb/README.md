@@ -38,7 +38,22 @@
 ./manage_wandb_space.py usage -p my-project [-e my-entity]
 ```
 
-Prints a table of artifact types, version counts, and total sizes, sorted by space used.
+Prints a combined storage report that includes:
+
+- **Artifacts** (wandb-history, datasets, models, etc.) — version count and size per type
+- **Run files** (checkpoints, logs, `wandb.save()` files, code snapshots) — file count and size grouped by extension
+- **Grand total** of both categories combined
+
+This gives you the full picture of what's using your wandb storage — not just
+the automatically-tracked artifact types.
+
+```bash
+# Skip the run-file scan (faster, for artifact-only stats):
+./manage_wandb_space.py usage -p my-project --artifacts-only
+```
+
+The run-file scan iterates every run in the project and lists its stored files,
+so it can be slow for projects with many runs. Progress is printed every 50 runs.
 
 ### `list` — Browse artifacts
 
@@ -94,6 +109,36 @@ This is the primary space-saving workflow. It keeps recent versions so nothing b
 
 Deletes **all** artifacts in the project. Prompts for the project name as confirmation.
 
+### `run-files` — Find large run files (checkpoints, logs, etc.)
+
+```bash
+# List all checkpoint files in a project
+./manage_wandb_space.py run-files -p my-project --pattern '*.ckpt'
+
+# Find large files over 50 MB
+./manage_wandb_space.py run-files -p my-project --min-size 50MB
+
+# Only show files from runs older than 30 days
+./manage_wandb_space.py run-files -p my-project --pattern '*.pt' -d 30
+
+# Limit scan to first 10 runs (quick test)
+./manage_wandb_space.py run-files -p my-project --pattern '*.ckpt' --limit 10
+```
+
+Lists files stored **inside runs** (not artifacts). This is where checkpoints, uploaded logs, and `wandb.save()` files live. Grouped by file extension with total sizes.
+
+### `clean-run-files` — Delete run files by pattern
+
+```bash
+# Preview what would be deleted
+./manage_wandb_space.py clean-run-files -p my-project --pattern '*.ckpt' -d 30 --dry-run
+
+# Delete old checkpoints (runs older than 30 days)
+./manage_wandb_space.py clean-run-files -p my-project --pattern '*.ckpt' -d 30
+```
+
+Deletes files matching a glob pattern from runs older than the specified number of days. **Always use `--dry-run` first.**
+
 ### `clean-local` — Free local disk space
 
 ```bash
@@ -135,4 +180,17 @@ Cleans `~/.wandb/artifacts`, `~/.wandb/logs`, and (with `--aggressive`) `./wandb
 ./manage_wandb_space.py list -p my-project -t model --sizes
 ./manage_wandb_space.py delete -p my-project -n old-experiment-model --all --dry-run
 ./manage_wandb_space.py delete -p my-project -n old-experiment-model --all
+```
+
+### Clean up old checkpoints (run files)
+
+```bash
+# 1. Audit: how many checkpoints and total size?
+./manage_wandb_space.py run-files -p diffuse_cloc --pattern '*.ckpt'
+
+# 2. Preview deletion for runs older than 30 days
+./manage_wandb_space.py clean-run-files -p my-project --pattern '*.ckpt' -d 30 --dry-run
+
+# 3. Execute
+./manage_wandb_space.py clean-run-files -p diffuse_cloc --pattern '*.ckpt' -d 3
 ```
