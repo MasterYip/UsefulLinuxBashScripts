@@ -715,6 +715,7 @@ def cmd_usage(api, args: argparse.Namespace) -> None:
     """Show storage usage summary for a project — artifacts + run files."""
     entity = args._entity
     path = f"{entity}/{args.project}"
+    verbose = args.verbose
 
     # ------------------------------------------------------------------
     # 1. Artifact storage (wandb-history, wandb-events, datasets, models...)
@@ -728,15 +729,24 @@ def cmd_usage(api, args: argparse.Namespace) -> None:
     artifact_total_size = 0
     artifact_total_count = 0
     per_type: list[tuple[str, int, int]] = []  # (type_name, count, total_bytes)
+    # (type_name, coll_name) → (version_count, total_bytes) — only populated in verbose mode
+    per_collection: dict[tuple[str, str], tuple[int, int]] = {}
 
     for at in artifact_types:
         type_count = 0
         type_size = 0
         try:
             for coll in at.collections():
+                coll_count = 0
+                coll_size = 0
                 for art in coll.artifacts():
+                    sz = getattr(art, "size", 0) or 0
                     type_count += 1
-                    type_size += getattr(art, "size", 0) or 0
+                    type_size += sz
+                    coll_count += 1
+                    coll_size += sz
+                if verbose and coll_count:
+                    per_collection[(at.name, coll.name)] = (coll_count, coll_size)
         except Exception as exc:
             print(f"  Skipping type '{at.name}': {exc}", file=sys.stderr)
             continue
@@ -800,6 +810,32 @@ def cmd_usage(api, args: argparse.Namespace) -> None:
     print("-" * 54)
     print(f"{'Artifacts subtotal':<30} {artifact_total_count:>10} {_human_bytes(artifact_total_size):>12}")
     print()
+
+    # -- Per-collection breakdown (verbose) --
+    if verbose and per_collection:
+        type_order = [t[0] for t in sorted(per_type, key=lambda x: x[2], reverse=True)]
+        for type_name in type_order:
+            colls = [
+                (cn, cnt, sz)
+                for (tn, cn), (cnt, sz) in per_collection.items()
+                if tn == type_name
+            ]
+            if not colls:
+                continue
+            colls.sort(key=lambda x: x[2], reverse=True)
+            type_total_size = sum(sz for _, _, sz in colls)
+            type_total_count = sum(cnt for _, cnt, _ in colls)
+            print(f"  ▸ {type_name}  ({type_total_count} versions, {_human_bytes(type_total_size)})")
+            print(f"    {'Collection':<38} {'Vers':>5}  {'Size':>10}")
+            print(f"    {'─' * 56}")
+            limit = 25 if not args.show_all else len(colls)
+            for cn, cnt, sz in colls[:limit]:
+                print(f"    {cn:<38} {cnt:>5}  {_human_bytes(sz):>10}")
+            if limit < len(colls):
+                remaining = len(colls) - limit
+                remaining_sz = sum(sz for _, _, sz in colls[limit:])
+                print(f"    ... and {remaining} more ({_human_bytes(remaining_sz)}, use --show-all to list)")
+            print()
 
     # -- Run files section --
     if not args.artifacts_only and per_run_ext:
@@ -971,6 +1007,8 @@ def main() -> None:
     p_usage = sub.add_parser("usage", help="Show storage usage summary for a project")
     p_usage.add_argument("--project", "-p", required=True, help="Project name")
     p_usage.add_argument("--artifacts-only", action="store_true", help="Skip scanning run files (faster, but misses checkpoints & saved files)")
+    p_usage.add_argument("--verbose", "-v", action="store_true", help="Show per-collection breakdown within each artifact type (top 25 by size)")
+    p_usage.add_argument("--show-all", action="store_true", help="In verbose mode, show ALL collections instead of top 25")
 
     # ---- clean-local ----
     p_local = sub.add_parser("clean-local", help="Clean local wandb cache and logs")

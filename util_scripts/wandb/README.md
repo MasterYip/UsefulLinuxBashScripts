@@ -48,6 +48,12 @@ This gives you the full picture of what's using your wandb storage — not just
 the automatically-tracked artifact types.
 
 ```bash
+# See which specific collections/artifacts are the largest within each type:
+./manage_wandb_space.py usage -p my-project --verbose
+
+# Same but show ALL collections (default is top 25 per type):
+./manage_wandb_space.py usage -p my-project -v --show-all
+
 # Skip the run-file scan (faster, for artifact-only stats):
 ./manage_wandb_space.py usage -p my-project --artifacts-only
 ```
@@ -186,11 +192,11 @@ Cleans `~/.wandb/artifacts`, `~/.wandb/logs`, and (with `--aggressive`) `./wandb
 
 ```bash
 # 1. Audit: how many checkpoints and total size?
-./manage_wandb_space.py run-files -p diffuse_cloc --pattern '*.ckpt'
+./manage_wandb_space.py run-files -p my-project --pattern '*.ckpt'
 
 # 2. Preview deletion for runs older than 30 days
 ./manage_wandb_space.py clean-run-files -p my-project --pattern '*.ckpt' -d 30 --dry-run
 
 # 3. Execute
-./manage_wandb_space.py clean-run-files -p diffuse_cloc --pattern '*.ckpt' -d 3
+./manage_wandb_space.py clean-run-files -p my-project --pattern '*.ckpt' -d 3
 ```
