@@ -95,6 +95,36 @@
   /* GPU count badge */
   .gpu-count { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 6px; }
 
+  /* Connect dropdown */
+  .connect-wrap { position: relative; }
+  .connect-btn {
+    background: var(--bar-bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 2px 8px; font-size: 0.7rem; cursor: pointer;
+  }
+  .connect-btn:hover { border-color: var(--blue); }
+  .connect-dropdown {
+    display: none; position: absolute; right: 0; top: 100%; z-index: 100;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 4px;
+    min-width: 160px; padding: 4px 0; margin-top: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .connect-dropdown.show { display: block; }
+  .connect-dropdown button {
+    display: block; width: 100%; text-align: left; padding: 6px 12px;
+    background: none; border: none; color: var(--text); font-size: 0.78rem;
+    cursor: pointer;
+  }
+  .connect-dropdown button:hover { background: var(--bar-bg); color: var(--blue); }
+  .connect-dropdown .divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--blue); color: #fff; padding: 8px 20px; border-radius: 6px;
+    font-size: 0.85rem; z-index: 999; opacity: 0; transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
   /* Responsive */
   @media (max-width: 768px) {
     .grid { grid-template-columns: 1fr; }
@@ -119,7 +149,18 @@
         <span class="status-dot" id="dot-{{ server.name }}"></span>
         {{ server.name }}
       </span>
-      <span class="time" id="time-{{ server.name }}">--</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <span class="time" id="time-{{ server.name }}">--</span>
+        <span class="connect-wrap">
+          <button class="connect-btn" onclick="toggleDropdown(event, '{{ server.name }}')">Connect ▾</button>
+          <div class="connect-dropdown" id="dd-{{ server.name }}">
+            <button onclick="openTerminal('{{ server.name }}')">🖥 Terminal</button>
+            <button onclick="openVSCode('{{ server.name }}')">🟦 VSCode SSH</button>
+            <div class="divider"></div>
+            <button onclick="copySSH('{{ server.name }}')">📋 Copy SSH Command</button>
+          </div>
+        </span>
+      </span>
     </div>
     <div class="error-msg" id="err-{{ server.name }}"></div>
     <div class="metrics" id="metrics-{{ server.name }}">
@@ -138,6 +179,8 @@
   {% endfor %}
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
 const INTERVAL = {{ interval }};
 
@@ -152,6 +195,69 @@ function timeAgo(ts) {
   if (s < 10) return 'just now';
   if (s < 60) return s + 's ago';
   return Math.floor(s / 60) + 'm ago';
+}
+
+// ---- Connect dropdown ------------------------------------------------
+
+function toggleDropdown(e, name) {
+  e.stopPropagation();
+  const dd = document.getElementById('dd-' + name);
+  const wasOpen = dd.classList.contains('show');
+  closeAllDropdowns();
+  if (!wasOpen) dd.classList.add('show');
+}
+
+function closeAllDropdowns() {
+  document.querySelectorAll('.connect-dropdown.show').forEach(d => d.classList.remove('show'));
+}
+
+document.addEventListener('click', closeAllDropdowns);
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+async function sshInfo(name) {
+  const r = await fetch('/api/connect/' + name);
+  return r.json();
+}
+
+async function openTerminal(name) {
+  closeAllDropdowns();
+  const r = await fetch('/api/terminal/' + name, {method: 'POST'});
+  const data = await r.json();
+  if (data.ok) {
+    toast('Terminal launched: ' + name);
+  } else {
+    // Fallback: copy SSH command
+    await navigator.clipboard.writeText(data.ssh_cmd);
+    toast(data.error + ' — SSH command copied instead');
+  }
+}
+
+function openVSCode(name) {
+  closeAllDropdowns();
+  fetch('/api/vscode/' + name, {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        toast('VSCode launching: ' + name);
+      } else {
+        navigator.clipboard.writeText(data.ssh_cmd);
+        toast(data.error + ' — SSH command copied instead');
+      }
+    });
+}
+
+function copySSH(name) {
+  closeAllDropdowns();
+  sshInfo(name).then(info => {
+    navigator.clipboard.writeText(info.ssh_cmd).then(() => {
+      toast('Copied: ' + info.ssh_cmd);
+    });
+  });
 }
 
 function updateCard(name, m) {

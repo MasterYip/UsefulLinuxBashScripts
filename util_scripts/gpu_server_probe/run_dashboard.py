@@ -38,7 +38,7 @@ def _add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--interval",
         type=int,
-        default=10,
+        default=3,
         help="Probe interval in seconds (default: 10)",
     )
     parser.add_argument(
