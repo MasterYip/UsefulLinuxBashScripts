@@ -1,4 +1,4 @@
 [submodule "util_scripts/gpu_server_probe"]
 	path = util_scripts/gpu_server_probe
 	url = https://github.com/MasterYip/GPUServer_Dashboard.git
-	branch = main
+	branch = master
